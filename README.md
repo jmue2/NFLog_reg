@@ -1,6 +1,6 @@
 # NFLog_reg
 
-An end-to-end logistic regression model for predicting NFL games built using Python. This repository contains scripts for extracting and processing play-by-play (PBP) data, building models, and generating predictions for upcoming games.
+An end-to-end logistic regression model for predicting the outcome of NFL games built using nfl_data_py, pandas, and sklearn. This repository contains scripts for extracting and processing play-by-play (PBP) data, building models, and generating predictions for upcoming games.
 
 ## Overview
 
@@ -10,6 +10,8 @@ This repo includes the following scripts:
 - **cross_validation.py**: Performs cross-validation on the logistic regression model, evaluates accuracy, and visualizes feature importance.
 - **curr_season_accuracy.py**: Evaluates the prediction accuracy for the current NFL season when trained on only data 2010-2023.
 - **predict_next_week_nfl.py**: Generates predictions for the next week's NFL games, using the latest model data and dynamically computed metrics.
+
+At the time of this commit, the model achieved 63.54% average accuracy during cross-validation (k=5), and 59.74% accuracy thus far on the 2024 season (when only trained on past seasons' data).
 
 ## Getting Started
 
