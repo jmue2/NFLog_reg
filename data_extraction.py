@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import os
 from datetime import datetime
+from sklearn.preprocessing import MinMaxScaler
 
 def import_latest_pbp_from(start_season):
     """
@@ -72,10 +73,14 @@ def extract_weekly_team_turnover_data(data):
     """
     data['turnover'] = data[['interception', 'fumble_lost', 'safety']].any(axis=1).astype(int)
 
-    turnover_rate_offense = data.groupby(['posteam', 'season', 'week'], as_index=False)['turnover'].sum()
-    turnover_rate_defense = data.groupby(['defteam', 'season', 'week'], as_index=False)['turnover'].sum()
+    turnover_count_offense = data.groupby(['posteam', 'season', 'week'], as_index=False)['turnover'].sum()
+    turnover_count_defense = data.groupby(['defteam', 'season', 'week'], as_index=False)['turnover'].sum()
     
-    return turnover_rate_offense, turnover_rate_defense
+    scaler = MinMaxScaler()
+    turnover_count_offense['turnover_normalized'] = scaler.fit_transform(turnover_count_offense[['turnover']])
+    turnover_count_defense['turnover_normalized'] = scaler.fit_transform(turnover_count_defense[['turnover']])
+
+    return turnover_count_offense, turnover_count_defense
 
 def dynamic_window_ewma_epa(x):
     """
@@ -109,33 +114,33 @@ def dynamic_window_ewma_turnover(x):
         values[i] = epa.ewm(min_periods=1, span=span).mean().iloc[-1]
     return pd.Series(values, index=x.index)
 
-def process_and_combine_turnover_data(turnover_rate_offense, turnover_rate_defense):
+def process_and_combine_turnover_data(turnover_count_offense, turnover_count_defense):
     """
     processes and combines turnover data for offense and defense, applying a dynamic window EWMA
     
-    :param turnover_rate_offense (pd.DataFrame): turnover data for offensive plays
-    :param turnover_rate_defense (pd.DataFrame): turnover data for defensive plays
+    :param turnover_count_offense (pd.DataFrame): turnover data for offensive plays
+    :param turnover_count_defense (pd.DataFrame): turnover data for defensive plays
     
-    :ret turnover_rates (pd.DataFrame): A DataFrame containing combined turnover rates for each team, 
+    :ret turnover_counts (pd.DataFrame): A DataFrame containing combined turnover rates for each team, 
         including dynamic EWMA values
     """
-    turnover_rate_offense['turnover_shifted'] = turnover_rate_offense.groupby('posteam')['turnover'].shift()
-    turnover_rate_defense['turnover_shifted'] = turnover_rate_defense.groupby('defteam')['turnover'].shift()
+    turnover_count_offense['turnover_shifted'] = turnover_count_offense.groupby('posteam')['turnover_normalized'].shift()
+    turnover_count_defense['turnover_shifted'] = turnover_count_defense.groupby('defteam')['turnover_normalized'].shift()
 
-    turnover_rate_offense['turnover_ewma_dynamic_window'] = turnover_rate_offense.groupby('posteam')\
+    turnover_count_offense['turnover_ewma_dynamic_window'] = turnover_count_offense.groupby('posteam')\
         .apply(dynamic_window_ewma_turnover).values
 
-    turnover_rate_offense.rename(columns={'posteam': 'team'}, inplace=True)
+    turnover_count_offense.rename(columns={'posteam': 'team'}, inplace=True)
 
-    turnover_rate_defense['turnover_ewma_dynamic_window'] = turnover_rate_defense.groupby('defteam')\
+    turnover_count_defense['turnover_ewma_dynamic_window'] = turnover_count_defense.groupby('defteam')\
         .apply(dynamic_window_ewma_turnover).values
     
-    turnover_rate_defense.rename(columns={'defteam': 'team'}, inplace=True)
+    turnover_count_defense.rename(columns={'defteam': 'team'}, inplace=True)
     
-    turnover_rates = turnover_rate_offense.merge(
-        turnover_rate_defense, on=['team', 'season', 'week'], suffixes=('_offense', '_defense'))
+    turnover_counts = turnover_count_offense.merge(
+        turnover_count_defense, on=['team', 'season', 'week'], suffixes=('_offense', '_defense'))
     
-    return turnover_rates
+    return turnover_counts
 
 def process_and_combine_epa_data(rushing_offense_epa, rushing_defense_epa, passing_offense_epa, passing_defense_epa):
     """
@@ -189,7 +194,7 @@ def main():
     rushing_offense_epa, rushing_defense_epa, passing_offense_epa, passing_defense_epa =\
         extract_weekly_team_epa_data(data)
 
-    turnover_rate_offense, turnover_rate_defense = extract_weekly_team_turnover_data(data)
+    turnover_count_offense, turnover_count_defense = extract_weekly_team_turnover_data(data)
 
     epa = process_and_combine_epa_data(rushing_offense_epa, rushing_defense_epa, passing_offense_epa, passing_defense_epa)
     epa_home = epa.rename(columns={'team': 'home_team'})
@@ -198,12 +203,12 @@ def main():
     df = schedule.merge(epa_home, on=['season', 'week', 'home_team'], how='left')\
         .merge(epa_away, on=['season', 'week', 'away_team'], how='left', suffixes=('_home', '_away'))
 
-    turnover_rates = process_and_combine_turnover_data(turnover_rate_offense, turnover_rate_defense)
-    turnover_rates_home = turnover_rates.rename(columns={'team': 'home_team'})
-    turnover_rates_away = turnover_rates.rename(columns={'team': 'away_team'})
+    turnover_counts = process_and_combine_turnover_data(turnover_count_offense, turnover_count_defense)
+    turnover_counts_home = turnover_counts.rename(columns={'team': 'home_team'})
+    turnover_counts_away = turnover_counts.rename(columns={'team': 'away_team'})
 
-    df = df.merge(turnover_rates_home, on=['season', 'week', 'home_team'], how='left')\
-        .merge(turnover_rates_away, on=['season', 'week', 'away_team'], how='left', suffixes=('_home', '_away'))
+    df = df.merge(turnover_counts_home, on=['season', 'week', 'home_team'], how='left')\
+        .merge(turnover_counts_away, on=['season', 'week', 'away_team'], how='left', suffixes=('_home', '_away'))
 
     first_season = epa['season'].min()
     df = df[df['season'] != first_season]
